@@ -43,4 +43,19 @@ export class GraphModel {
             edge.source === nodeId || edge.target === nodeId
         );
     }
+
+    getUniqueNodeTypes(): NodeType[] {
+        const types = new Set<NodeType>();
+        this.data.nodes.forEach(node => types.add(node.type));
+        return Array.from(types);
+    }
+
+    getNodeNeighbors(nodeId: string): Set<string> {
+        const neighbors = new Set<string>();
+        this.data.edges.forEach(edge => {
+            if (edge.source === nodeId) neighbors.add(edge.target);
+            if (edge.target === nodeId) neighbors.add(edge.source);
+        });
+        return neighbors;
+    }
 } 

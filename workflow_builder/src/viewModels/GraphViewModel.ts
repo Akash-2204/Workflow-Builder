@@ -1,23 +1,40 @@
 import { useState, useCallback } from 'react';
 import { GraphModel } from '../models/GraphModel';
-import { Node, Edge, NodeType, GraphData } from '../types/Graph';
+import { Node, Edge, NodeType, GraphData, NodeDetails, GraphState } from '../types/Graph';
 
 export class GraphViewModel {
     private model: GraphModel;
-    private selectedNode: string | null = null;
-    private filteredNodeTypes: Set<NodeType> = new Set();
-    private filterChangeCallbacks: (() => void)[] = [];
+    private state: GraphState = {
+        selectedNode: null,
+        filteredTypes: new Set<NodeType>(),
+        hoveredNode: null
+    };
+    private stateChangeCallbacks: (() => void)[] = [];
 
     constructor(data: GraphData) {
         this.model = new GraphModel(data);
     }
 
+    // State Management
+    private notifyStateChange() {
+        this.stateChangeCallbacks.forEach(callback => callback());
+    }
+
+    onStateChange(callback: () => void) {
+        this.stateChangeCallbacks.push(callback);
+        return () => {
+            this.stateChangeCallbacks = this.stateChangeCallbacks.filter(cb => cb !== callback);
+        };
+    }
+
+    // Node Visibility
     getVisibleNodes(): Node[] {
-        if (this.filteredNodeTypes.size === 0) {
+        const { filteredTypes } = this.state;
+        if (filteredTypes.size === 0) {
             return this.model.getAllNodes();
         }
         return this.model.getAllNodes().filter(node => 
-            this.filteredNodeTypes.has(node.type)
+            filteredTypes.has(node.type)
         );
     }
 
@@ -28,49 +45,61 @@ export class GraphViewModel {
         );
     }
 
+    // Node Selection
     setSelectedNode(nodeId: string | null) {
-        this.selectedNode = nodeId;
+        this.state.selectedNode = nodeId;
+        this.notifyStateChange();
     }
 
-    getSelectedNodeDetails(): { node: Node, connections: Node[], relationships: Edge[] } | null {
-        if (!this.selectedNode) return null;
+    getSelectedNodeDetails(): NodeDetails | null {
+        const { selectedNode } = this.state;
+        if (!selectedNode) return null;
 
-        const node = this.model.getNodeById(this.selectedNode);
+        const node = this.model.getNodeById(selectedNode);
         if (!node) return null;
 
         return {
             node,
-            connections: this.model.getConnectedNodes(this.selectedNode),
-            relationships: this.model.getRelationships(this.selectedNode)
+            connections: this.model.getConnectedNodes(selectedNode),
+            relationships: this.model.getRelationships(selectedNode)
         };
     }
 
-    getSelectedTypes(): Set<NodeType> {
-        return this.filteredNodeTypes;
+    // Node Hovering
+    setHoveredNode(nodeId: string | null) {
+        this.state.hoveredNode = nodeId;
+        this.notifyStateChange();
     }
 
-    onFiltersChange(callback: () => void) {
-        this.filterChangeCallbacks.push(callback);
+    getHoveredNodeNeighbors(): Set<string> {
+        const { hoveredNode } = this.state;
+        if (!hoveredNode) return new Set();
+        return this.model.getNodeNeighbors(hoveredNode);
+    }
+
+    // Filtering
+    getSelectedTypes(): Set<NodeType> {
+        return this.state.filteredTypes;
     }
 
     toggleNodeTypeFilter(type: NodeType) {
-        if (this.filteredNodeTypes.has(type)) {
-            this.filteredNodeTypes.delete(type);
+        const { filteredTypes } = this.state;
+        if (filteredTypes.has(type)) {
+            filteredTypes.delete(type);
         } else {
-            this.filteredNodeTypes.add(type);
+            filteredTypes.add(type);
         }
-        this.filterChangeCallbacks.forEach(callback => callback());
+        this.notifyStateChange();
     }
 
     clearFilters() {
-        this.filteredNodeTypes.clear();
-        this.filterChangeCallbacks.forEach(callback => callback());
+        this.state.filteredTypes.clear();
+        this.notifyStateChange();
     }
 
+    // Utility Methods
     getNodeTypes(): NodeType[] {
-        const types = new Set<NodeType>();
-        this.model.getAllNodes().forEach(node => types.add(node.type));
-        return Array.from(types);
+        return this.model.getUniqueNodeTypes();
     }
 
     getNodeById(id: string): Node | undefined {
@@ -86,6 +115,11 @@ export const useGraphViewModel = (initialData: GraphData) => {
     const forceUpdate = useCallback(() => {
         setUpdateTrigger({});
     }, []);
+
+    // Subscribe to state changes
+    useCallback(() => {
+        return viewModel.onStateChange(forceUpdate);
+    }, [viewModel, forceUpdate]);
 
     return {
         viewModel,
