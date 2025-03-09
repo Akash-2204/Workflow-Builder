@@ -276,9 +276,31 @@ const ReactFlowVisualization: React.FC<{ data: GraphData }> = ({ data }) => {
 
         return (
             <Panel position="top-right" className="bg-white p-4 rounded-lg shadow-lg w-80">
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">
-                    {details.node.label}
-                </h3>
+                <div className="flex justify-between items-start mb-4">
+                    <h3 className="text-xl font-semibold text-gray-800">
+                        {details.node.label}
+                    </h3>
+                    <button
+                        onClick={() => {
+                            viewModel.setSelectedNode(null);
+                            forceUpdate();
+                        }}
+                        className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                        aria-label="Close details"
+                    >
+                        <svg
+                            className="w-5 h-5 text-gray-500"
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                        >
+                            <path d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
                 <div
                     className="inline-block px-2 py-1 rounded-full text-sm font-medium text-white mb-4"
                     style={{ backgroundColor: NODE_COLORS[details.node.type] }}
@@ -290,7 +312,7 @@ const ReactFlowVisualization: React.FC<{ data: GraphData }> = ({ data }) => {
                         <h4 className="text-lg font-medium text-gray-700 mb-2">
                             Connections
                         </h4>
-                        <ul className="space-y-2">
+                        <ul className="space-y-2 max-h-48 overflow-y-auto">
                             {details.connections.map((node) => (
                                 <li
                                     key={node.id}
@@ -316,7 +338,7 @@ const ReactFlowVisualization: React.FC<{ data: GraphData }> = ({ data }) => {
                         <h4 className="text-lg font-medium text-gray-700 mb-2">
                             Relationships
                         </h4>
-                        <ul className="space-y-2">
+                        <ul className="space-y-2 max-h-48 overflow-y-auto">
                             {details.relationships.map((edge) => (
                                 <li
                                     key={`${edge.source}-${edge.target}`}
