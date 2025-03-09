@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type Graph from 'graphology';
 import type Sigma from 'sigma';
 import type { Attributes } from 'graphology-types';
@@ -35,6 +35,7 @@ const GraphVisualization: React.FC = () => {
     const { viewModel, forceUpdate } = useGraphViewModel(graphData);
     const sigmaRef = useRef<Sigma | null>(null);
     const hoveredNodeRef = useRef<string | null>(null);
+    const [selectedTypes, setSelectedTypes] = useState<Set<NodeType>>(new Set());
 
     useEffect(() => {
         let graph: Graph;
@@ -42,6 +43,11 @@ const GraphVisualization: React.FC = () => {
 
         const initializeGraph = async () => {
             if (!containerRef.current) return;
+
+            // Cleanup previous instance
+            if (sigmaRef.current) {
+                sigmaRef.current.kill();
+            }
 
             const { default: Graph } = await import('graphology');
             const { default: Sigma } = await import('sigma');
@@ -56,11 +62,13 @@ const GraphVisualization: React.FC = () => {
             nodes.forEach(node => {
                 graph.addNode(node.id, {
                     label: node.label,
-                    size: 10,
+                    size: 15,
                     color: NODE_COLORS[node.type],
-                    hidden: false,
                     x: Math.random() * 100,
-                    y: Math.random() * 100
+                    y: Math.random() * 100,
+                    labelSize: 14,
+                    labelColor: '#000000',
+                    labelWeight: 'bold'
                 });
             });
 
@@ -70,8 +78,7 @@ const GraphVisualization: React.FC = () => {
                 graph.addEdge(edge.source, edge.target, {
                     label: edge.relationship,
                     size: 1,
-                    color: '#999',
-                    hidden: false
+                    color: '#999'
                 });
             });
 
@@ -85,65 +92,67 @@ const GraphVisualization: React.FC = () => {
                 }
             });
 
-            const updateNodeVisibility = () => {
-                const hoveredNode = hoveredNodeRef.current;
-                const selectedTypes = viewModel.getSelectedTypes();
-                const hasFilters = selectedTypes.size > 0;
-
-                graph.forEachNode((nodeId, attributes) => {
-                    const nodeAttrs = attributes as unknown as NodeAttributes;
-                    if (hoveredNode) {
-                        // When a node is hovered, show it and its connections
-                        const isHovered = nodeId === hoveredNode;
-                        const isConnected = graph.neighbors(hoveredNode).includes(nodeId);
-                        nodeAttrs.hidden = !(isHovered || isConnected);
-                        nodeAttrs.size = isHovered ? 15 : 10;
-                        nodeAttrs.color = isHovered ? '#ff0000' : NODE_COLORS[nodeAttrs.type];
-                    } else if (hasFilters) {
-                        // When filters are active, show only nodes of selected types
-                        nodeAttrs.hidden = !selectedTypes.has(nodeAttrs.type);
-                        nodeAttrs.size = 10;
-                        nodeAttrs.color = NODE_COLORS[nodeAttrs.type];
-                    } else {
-                        // Show all nodes when no filters are active
-                        nodeAttrs.hidden = false;
-                        nodeAttrs.size = 10;
-                        nodeAttrs.color = NODE_COLORS[nodeAttrs.type];
-                    }
-                });
-
-                graph.forEachEdge((edgeId, attributes, source, target) => {
-                    if (hoveredNode) {
-                        // Show edges connected to hovered node
-                        attributes.hidden = !(source === hoveredNode || target === hoveredNode);
-                    } else if (hasFilters) {
-                        // Show edges between visible nodes
-                        const sourceAttr = graph.getNodeAttributes(source);
-                        const targetAttr = graph.getNodeAttributes(target);
-                        attributes.hidden = sourceAttr.hidden || targetAttr.hidden;
-                    } else {
-                        attributes.hidden = false;
-                    }
-                });
-
-                sigma.refresh();
-            };
-
             // Initialize Sigma
             sigma = new Sigma(graph, containerRef.current, {
                 minCameraRatio: 0.1,
-                maxCameraRatio: 10
+                maxCameraRatio: 10,
+                renderLabels: true,
+                labelSize: 12,
+                labelWeight: 'bold',
+                labelColor: {
+                    color: '#000000'
+                },
+                labelDensity: 0.7,
+                labelGridCellSize: 60,
+                labelRenderedSizeThreshold: 6
             });
 
             // Handle interactions
             sigma.on('enterNode', ({ node }) => {
                 hoveredNodeRef.current = node;
-                updateNodeVisibility();
+                const connectedNodeIds = new Set([node, ...graph.neighbors(node)]);
+                
+                // Update all nodes
+                graph.forEachNode((nodeId, attrs) => {
+                    const nodeAttrs = attrs as NodeAttributes;
+                    const isConnected = connectedNodeIds.has(nodeId);
+                    
+                    if (isConnected) {
+                        nodeAttrs.size = nodeId === node ? 20 : 15;
+                        nodeAttrs.color = nodeId === node ? '#ff0000' : NODE_COLORS[nodeAttrs.type];
+                        nodeAttrs.labelSize = nodeId === node ? 16 : 14;
+                        nodeAttrs.hidden = false;
+                    } else {
+                        nodeAttrs.hidden = true;
+                    }
+                });
+
+                // Update edges
+                graph.forEachEdge((edgeId, attrs, source, target) => {
+                    attrs.hidden = !(connectedNodeIds.has(source) && connectedNodeIds.has(target));
+                });
+
+                sigma.refresh();
             });
 
             sigma.on('leaveNode', () => {
                 hoveredNodeRef.current = null;
-                updateNodeVisibility();
+                
+                // Restore all nodes
+                graph.forEachNode((nodeId, attrs) => {
+                    const nodeAttrs = attrs as NodeAttributes;
+                    nodeAttrs.size = 15;
+                    nodeAttrs.color = NODE_COLORS[nodeAttrs.type];
+                    nodeAttrs.labelSize = 14;
+                    nodeAttrs.hidden = false;
+                });
+
+                // Restore all edges
+                graph.forEachEdge((edgeId, attrs) => {
+                    attrs.hidden = false;
+                });
+
+                sigma.refresh();
             });
 
             sigma.on('clickNode', ({ node }) => {
@@ -152,11 +161,6 @@ const GraphVisualization: React.FC = () => {
             });
 
             sigmaRef.current = sigma;
-
-            // Update visibility when filters change
-            viewModel.onFiltersChange(() => {
-                updateNodeVisibility();
-            });
         };
 
         initializeGraph();
@@ -166,7 +170,25 @@ const GraphVisualization: React.FC = () => {
                 sigmaRef.current.kill();
             }
         };
-    }, [viewModel, forceUpdate]);
+    }, [viewModel, forceUpdate, selectedTypes]); // Add selectedTypes as dependency
+
+    const handleFilterChange = (type: NodeType) => {
+        const newSelectedTypes = new Set(selectedTypes);
+        if (newSelectedTypes.has(type)) {
+            newSelectedTypes.delete(type);
+        } else {
+            newSelectedTypes.add(type);
+        }
+        setSelectedTypes(newSelectedTypes);
+        viewModel.toggleNodeTypeFilter(type);
+        forceUpdate();
+    };
+
+    const handleClearFilters = () => {
+        setSelectedTypes(new Set());
+        viewModel.clearFilters();
+        forceUpdate();
+    };
 
     // Get selected node details
     const selectedDetails = viewModel.getSelectedNodeDetails();
@@ -233,26 +255,26 @@ const GraphVisualization: React.FC = () => {
                 <div className="mt-8 pt-6 border-t border-gray-200">
                     <h4 className="text-lg font-medium text-gray-700 mb-4">Filter by Type</h4>
                     <div className="space-y-2">
-                        {viewModel.getNodeTypes().map(type => (
-                            <label key={type} 
-                                   className="flex items-center p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    onChange={() => {
-                                        viewModel.toggleNodeTypeFilter(type);
-                                        forceUpdate();
-                                    }}
-                                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                                />
-                                <span className="ml-3 text-gray-700">{type}</span>
-                            </label>
-                        ))}
+                        {viewModel.getNodeTypes().map(type => {
+                            const isSelected = selectedTypes.has(type);
+                            return (
+                                <label key={type} 
+                                       className={`flex items-center p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer ${
+                                           isSelected ? 'bg-blue-50' : ''
+                                       }`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => handleFilterChange(type)}
+                                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                    />
+                                    <span className="ml-3 text-gray-700">{type}</span>
+                                </label>
+                            );
+                        })}
                     </div>
                     <button
-                        onClick={() => {
-                            viewModel.clearFilters();
-                            forceUpdate();
-                        }}
+                        onClick={handleClearFilters}
                         className="mt-4 w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors font-medium"
                     >
                         Clear Filters
