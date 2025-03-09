@@ -18,7 +18,7 @@ import dagre from 'dagre';
 import 'reactflow/dist/style.css';
 import { useGraphViewModel } from '../viewModels/GraphViewModel';
 import { GraphData, NodeType } from '../types/Graph';
-import { NODE_COLORS, GRAPH_LAYOUT_CONFIG } from '../constants/graphConfig';
+import { NODE_COLORS } from '../constants/graphConfig';
 
 // Layout configuration
 const nodeWidth = 180;
