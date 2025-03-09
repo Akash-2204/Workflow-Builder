@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { GraphModel } from '../models/GraphModel';
 import { Node, Edge, NodeType, GraphData, NodeDetails, GraphState } from '../types/Graph';
 
@@ -58,10 +58,24 @@ export class GraphViewModel {
         const node = this.model.getNodeById(selectedNode);
         if (!node) return null;
 
+        const connections = this.model.getConnectedNodes(selectedNode)
+            .filter(node => {
+                // Only show connections that are visible based on current filters
+                const visibleNodes = new Set(this.getVisibleNodes().map(n => n.id));
+                return visibleNodes.has(node.id);
+            });
+
+        const relationships = this.model.getRelationships(selectedNode)
+            .filter(edge => {
+                // Only show relationships that connect to visible nodes
+                const visibleNodes = new Set(this.getVisibleNodes().map(n => n.id));
+                return visibleNodes.has(edge.source) && visibleNodes.has(edge.target);
+            });
+
         return {
             node,
-            connections: this.model.getConnectedNodes(selectedNode),
-            relationships: this.model.getRelationships(selectedNode)
+            connections,
+            relationships
         };
     }
 
@@ -74,7 +88,14 @@ export class GraphViewModel {
     getHoveredNodeNeighbors(): Set<string> {
         const { hoveredNode } = this.state;
         if (!hoveredNode) return new Set();
-        return this.model.getNodeNeighbors(hoveredNode);
+        
+        const neighbors = this.model.getNodeNeighbors(hoveredNode);
+        const visibleNodes = new Set(this.getVisibleNodes().map(node => node.id));
+        
+        // Only return neighbors that are currently visible
+        return new Set(
+            Array.from(neighbors).filter(nodeId => visibleNodes.has(nodeId))
+        );
     }
 
     // Filtering
@@ -117,7 +138,7 @@ export const useGraphViewModel = (initialData: GraphData) => {
     }, []);
 
     // Subscribe to state changes
-    useCallback(() => {
+    useEffect(() => {
         return viewModel.onStateChange(forceUpdate);
     }, [viewModel, forceUpdate]);
 

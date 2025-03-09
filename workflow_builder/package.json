@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@types/dagre": "^0.7.52",
+    "dagre": "^0.8.5",
     "graphology": "^0.26.0",
     "graphology-layout": "^0.6.1",
     "graphology-layout-force": "^0.2.4",
@@ -17,7 +19,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-query": "^3.39.3",
-    "reactflow": "^11.11.4",
+    "reactflow": "^11.10.4",
     "sigma": "^3.0.1",
     "zustand": "^4.5.1"
   },
