@@ -5,9 +5,11 @@ import type Graph from 'graphology';
 import type Sigma from 'sigma';
 import type { Attributes } from 'graphology-types';
 import { useGraphViewModel } from '../viewModels/GraphViewModel';
-import { graphData } from '../data/graphData';
+import { graphData as defaultGraphData } from '../data/graphData';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type { Node, Edge, NodeType } from '../types/Graph';
+import type { Node, Edge, NodeType, GraphData } from '../types/Graph';
+
+type LayoutType = 'circular' | 'force' | 'random' | 'circlepack';
 
 interface NodeAttributes extends Attributes {
     label: string;
@@ -30,147 +32,195 @@ const NODE_COLORS: Record<NodeType, string> = {
     Investor: '#607D8B'
 };
 
-const GraphVisualization: React.FC = () => {
+interface GraphVisualizationProps {
+    data?: GraphData;
+}
+
+const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultGraphData }) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const { viewModel, forceUpdate } = useGraphViewModel(graphData);
+    const { viewModel, forceUpdate } = useGraphViewModel(data);
     const sigmaRef = useRef<Sigma | null>(null);
+    const graphRef = useRef<Graph | null>(null);
     const hoveredNodeRef = useRef<string | null>(null);
     const [selectedTypes, setSelectedTypes] = useState<Set<NodeType>>(new Set());
+    const [selectedLayout, setSelectedLayout] = useState<LayoutType>('circular');
 
-    useEffect(() => {
-        let graph: Graph;
-        let sigma: Sigma;
-
-        const initializeGraph = async () => {
-            if (!containerRef.current) return;
-
-            // Cleanup previous instance
-            if (sigmaRef.current) {
-                sigmaRef.current.kill();
+    const applyLayout = async (graph: Graph, layout: LayoutType) => {
+        const graphologyLayout = await import('graphology-layout');
+        
+        switch (layout) {
+            case 'circular': {
+                graphologyLayout.circular.assign(graph);
+                break;
             }
-
-            const { default: Graph } = await import('graphology');
-            const { default: Sigma } = await import('sigma');
-            const { circular } = await import('graphology-layout');
-            const { default: forceAtlas2 } = await import('graphology-layout-forceatlas2');
-
-            // Create a new graph instance
-            graph = new Graph();
-
-            // Add nodes to the graph
-            const nodes = viewModel.getVisibleNodes();
-            nodes.forEach(node => {
-                graph.addNode(node.id, {
-                    label: node.label,
-                    size: 15,
-                    color: NODE_COLORS[node.type],
-                    x: Math.random() * 100,
-                    y: Math.random() * 100,
-                    labelSize: 14,
-                    labelColor: '#000000',
-                    labelWeight: 'bold'
+            case 'force': {
+                const { default: forceAtlas2 } = await import('graphology-layout-forceatlas2');
+                forceAtlas2.assign(graph, {
+                    iterations: 100,
+                    settings: {
+                        gravity: 1,
+                        scalingRatio: 2
+                    }
                 });
-            });
+                break;
+            }
+            case 'random': {
+                graphologyLayout.random.assign(graph);
+                break;
+            }
+            case 'circlepack': {
+                graphologyLayout.circlepack.assign(graph);
+                break;
+            }
+        }
+    };
 
-            // Add edges to the graph
-            const edges = viewModel.getVisibleEdges();
-            edges.forEach(edge => {
+    const initializeGraph = async () => {
+        if (!containerRef.current) return;
+
+        // Cleanup previous instance
+        if (sigmaRef.current) {
+            sigmaRef.current.kill();
+            sigmaRef.current = null;
+        }
+
+        if (graphRef.current) {
+            graphRef.current.clear();
+            graphRef.current = null;
+        }
+
+        const { default: Graph } = await import('graphology');
+        const { default: Sigma } = await import('sigma');
+
+        // Create a new graph instance
+        const graph = new Graph();
+        graphRef.current = graph;
+
+        // Add nodes to the graph
+        const nodes = viewModel.getVisibleNodes();
+        nodes.forEach(node => {
+            graph.addNode(node.id, {
+                label: node.label,
+                size: 15,
+                color: NODE_COLORS[node.type],
+                x: Math.random() * 100,
+                y: Math.random() * 100,
+                labelSize: 14,
+                labelColor: '#000000',
+                labelWeight: 'bold'
+            });
+        });
+
+        // Add edges to the graph
+        const edges = viewModel.getVisibleEdges();
+        edges.forEach(edge => {
+            if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
                 graph.addEdge(edge.source, edge.target, {
                     label: edge.relationship,
                     size: 1,
                     color: '#999'
                 });
-            });
+            }
+        });
 
-            // Apply layouts
-            circular.assign(graph);
-            forceAtlas2.assign(graph, {
-                iterations: 100,
-                settings: {
-                    gravity: 1,
-                    scalingRatio: 2
+        // Apply selected layout
+        await applyLayout(graph, selectedLayout);
+
+        if (!containerRef.current) return;
+
+        // Initialize Sigma
+        const sigma = new Sigma(graph, containerRef.current, {
+            minCameraRatio: 0.1,
+            maxCameraRatio: 10,
+            renderLabels: true,
+            labelSize: 12,
+            labelWeight: 'bold',
+            labelColor: {
+                color: '#000000'
+            },
+            labelDensity: 0.7,
+            labelGridCellSize: 60,
+            labelRenderedSizeThreshold: 6
+        });
+
+        // Handle interactions
+        sigma.on('enterNode', ({ node }) => {
+            if (!graph) return;
+            hoveredNodeRef.current = node;
+            const connectedNodeIds = new Set([node, ...graph.neighbors(node)]);
+            
+            // Update all nodes
+            graph.forEachNode((nodeId, attrs) => {
+                const nodeAttrs = attrs as NodeAttributes;
+                const isConnected = connectedNodeIds.has(nodeId);
+                
+                if (isConnected) {
+                    nodeAttrs.size = nodeId === node ? 20 : 15;
+                    nodeAttrs.color = nodeId === node ? '#ff0000' : NODE_COLORS[nodeAttrs.type];
+                    nodeAttrs.labelSize = nodeId === node ? 16 : 14;
+                    nodeAttrs.hidden = false;
+                } else {
+                    nodeAttrs.hidden = true;
                 }
             });
 
-            // Initialize Sigma
-            sigma = new Sigma(graph, containerRef.current, {
-                minCameraRatio: 0.1,
-                maxCameraRatio: 10,
-                renderLabels: true,
-                labelSize: 12,
-                labelWeight: 'bold',
-                labelColor: {
-                    color: '#000000'
-                },
-                labelDensity: 0.7,
-                labelGridCellSize: 60,
-                labelRenderedSizeThreshold: 6
+            // Update edges
+            graph.forEachEdge((edgeId, attrs, source, target) => {
+                attrs.hidden = !(connectedNodeIds.has(source) && connectedNodeIds.has(target));
             });
 
-            // Handle interactions
-            sigma.on('enterNode', ({ node }) => {
-                hoveredNodeRef.current = node;
-                const connectedNodeIds = new Set([node, ...graph.neighbors(node)]);
-                
-                // Update all nodes
-                graph.forEachNode((nodeId, attrs) => {
-                    const nodeAttrs = attrs as NodeAttributes;
-                    const isConnected = connectedNodeIds.has(nodeId);
-                    
-                    if (isConnected) {
-                        nodeAttrs.size = nodeId === node ? 20 : 15;
-                        nodeAttrs.color = nodeId === node ? '#ff0000' : NODE_COLORS[nodeAttrs.type];
-                        nodeAttrs.labelSize = nodeId === node ? 16 : 14;
-                        nodeAttrs.hidden = false;
-                    } else {
-                        nodeAttrs.hidden = true;
-                    }
-                });
+            sigma.refresh();
+        });
 
-                // Update edges
-                graph.forEachEdge((edgeId, attrs, source, target) => {
-                    attrs.hidden = !(connectedNodeIds.has(source) && connectedNodeIds.has(target));
-                });
-
-                sigma.refresh();
+        sigma.on('leaveNode', () => {
+            if (!graph) return;
+            hoveredNodeRef.current = null;
+            
+            // Restore all nodes
+            graph.forEachNode((nodeId, attrs) => {
+                const nodeAttrs = attrs as NodeAttributes;
+                nodeAttrs.size = 15;
+                nodeAttrs.color = NODE_COLORS[nodeAttrs.type];
+                nodeAttrs.labelSize = 14;
+                nodeAttrs.hidden = false;
             });
 
-            sigma.on('leaveNode', () => {
-                hoveredNodeRef.current = null;
-                
-                // Restore all nodes
-                graph.forEachNode((nodeId, attrs) => {
-                    const nodeAttrs = attrs as NodeAttributes;
-                    nodeAttrs.size = 15;
-                    nodeAttrs.color = NODE_COLORS[nodeAttrs.type];
-                    nodeAttrs.labelSize = 14;
-                    nodeAttrs.hidden = false;
-                });
-
-                // Restore all edges
-                graph.forEachEdge((edgeId, attrs) => {
-                    attrs.hidden = false;
-                });
-
-                sigma.refresh();
+            // Restore all edges
+            graph.forEachEdge((edgeId, attrs) => {
+                attrs.hidden = false;
             });
 
-            sigma.on('clickNode', ({ node }) => {
-                viewModel.setSelectedNode(node);
-                forceUpdate();
-            });
+            sigma.refresh();
+        });
 
-            sigmaRef.current = sigma;
-        };
+        sigma.on('clickNode', ({ node }) => {
+            viewModel.setSelectedNode(node);
+            forceUpdate();
+        });
 
+        sigmaRef.current = sigma;
+    };
+
+    // Initialize graph on mount
+    useEffect(() => {
         initializeGraph();
 
         return () => {
             if (sigmaRef.current) {
                 sigmaRef.current.kill();
+                sigmaRef.current = null;
+            }
+            if (graphRef.current) {
+                graphRef.current.clear();
+                graphRef.current = null;
             }
         };
-    }, [viewModel, forceUpdate, selectedTypes]); // Add selectedTypes as dependency
+    }, []);
+
+    // Reinitialize graph when filters or layout changes
+    useEffect(() => {
+        initializeGraph();
+    }, [selectedTypes, selectedLayout, viewModel]);
 
     const handleFilterChange = (type: NodeType) => {
         const newSelectedTypes = new Set(selectedTypes);
@@ -188,6 +238,10 @@ const GraphVisualization: React.FC = () => {
         setSelectedTypes(new Set());
         viewModel.clearFilters();
         forceUpdate();
+    };
+
+    const handleLayoutChange = (layout: LayoutType) => {
+        setSelectedLayout(layout);
     };
 
     // Get selected node details
@@ -250,6 +304,28 @@ const GraphVisualization: React.FC = () => {
                 ) : (
                     <p className="text-gray-500 italic">Select a node to see details</p>
                 )}
+
+                {/* Layout Selection */}
+                <div className="mt-8 pt-6 border-t border-gray-200">
+                    <h4 className="text-lg font-medium text-gray-700 mb-4">Layout Type</h4>
+                    <div className="space-y-2">
+                        {(['circular', 'force', 'random', 'circlepack'] as LayoutType[]).map(layout => (
+                            <label key={layout} 
+                                   className={`flex items-center p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer ${
+                                       selectedLayout === layout ? 'bg-blue-50' : ''
+                                   }`}>
+                                <input
+                                    type="radio"
+                                    name="layout"
+                                    checked={selectedLayout === layout}
+                                    onChange={() => handleLayoutChange(layout)}
+                                    className="w-4 h-4 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"
+                                />
+                                <span className="ml-3 text-gray-700 capitalize">{layout}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
 
                 {/* Node type filters */}
                 <div className="mt-8 pt-6 border-t border-gray-200">
