@@ -1,131 +1,192 @@
 # Workflow Builder
 
-A Next.js application for visualizing and managing workflow graphs using Sigma.js, following the MVVM (Model-View-ViewModel) architecture pattern.
+A powerful graph visualization application built with Next.js, demonstrating two different approaches to graph visualization using React Flow and Sigma.js.
 
-## Architecture Overview
+## Table of Contents
+- [Overview](#overview)
+- [Features](#features)
+- [Implementation Details](#implementation-details)
+  - [React Flow Implementation](#react-flow-implementation)
+  - [Sigma.js Implementation](#sigmajs-implementation)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
 
-The project follows MVVM architecture:
+## Overview
 
-### Model Layer (`/src/models`)
-- `GraphModel.ts`: Core data model that handles the graph data structure and basic operations
-- Responsible for data structure and business logic
-- No UI or state management logic
+This application provides two different graph visualization implementations:
+1. **React Flow**: A highly customizable React-based solution for building node-based editors and interactive diagrams
+2. **Sigma.js**: A powerful library specifically designed for graph drawing, with support for large-scale graph rendering
 
-### View Layer (`/src/components`)
-- `GraphVisualization.tsx`: Main visualization component
-- Handles rendering and user interactions
-- Uses Sigma.js for graph visualization
-- Communicates with ViewModel through hooks and callbacks
+## Features
 
-### ViewModel Layer (`/src/viewModels`)
-- `GraphViewModel.ts`: Manages the application state and business logic
-- Provides data transformation between Model and View
-- Handles user actions and updates model accordingly
-- Maintains UI state like selections and filters
+Common features across both implementations:
+- Interactive node-based graph visualization
+- Node filtering by type
+- Node details panel
+- Hover effects for connected nodes
+- Node selection and highlighting
+- Responsive design
 
-### Types and Interfaces (`/src/types`)
-- `Graph.ts`: Core data type definitions
-- `GraphUI.ts`: UI-specific type definitions and constants
+### React Flow Specific Features
+- Smooth edge animations
+- Built-in minimap
+- Zoom and pan controls
+- Custom node styling
+- Automatic layout using Dagre
+
+### Sigma.js Specific Features
+- Multiple layout options (circular, force, random, circlepack)
+- High-performance rendering for large graphs
+- Advanced node labeling system
+- Custom edge rendering
+
+## Implementation Details
+
+### React Flow Implementation
+
+The React Flow implementation (`ReactFlowVisualization.tsx`) uses a component-based approach with the following key features:
+
+#### 1. State Management
+```typescript
+const [nodes, setNodes, onNodesChange] = useNodesState([]);
+const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+const [selectedTypes] = useState<Set<NodeType>>(new Set());
+```
+
+#### 2. Graph Layout
+- Uses Dagre for automatic graph layout
+- Configurable layout settings (node spacing, direction, etc.)
+```typescript
+const layoutElements = useMemo(() => {
+    const graphNodes = viewModel.getVisibleNodes().map((node) => ({
+        id: node.id,
+        type: 'custom',
+        position: { x: 0, y: 0 },
+        data: { ... }
+    }));
+    return getLayoutedElements(graphNodes, graphEdges);
+}, [viewModel]);
+```
+
+#### 3. Interaction Handlers
+- Node click for selection
+- Mouse enter/leave for hover effects
+- Edge interactions
+```typescript
+const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    viewModel.setSelectedNode(node.id);
+    forceUpdate();
+}, [viewModel, forceUpdate]);
+```
+
+#### 4. Custom Components
+- `CustomNode`: Styled node component
+- `FilterPanel`: Type-based filtering
+- `NodeDetailsPanel`: Detailed node information
+
+### Sigma.js Implementation
+
+The Sigma.js implementation (`GraphVisualization.tsx`) provides a more specialized graph visualization approach:
+
+#### 1. Graph Initialization
+```typescript
+const initializeGraph = async () => {
+    const graph = new Graph();
+    // Add nodes and edges
+    await applyLayout(graph, selectedLayout);
+    const sigma = new Sigma(graph, containerRef.current, {
+        // Rendering settings
+    });
+};
+```
+
+#### 2. Multiple Layout Options
+```typescript
+const applyLayout = async (graph: Graph, layout: LayoutType) => {
+    switch (layout) {
+        case 'circular':
+            graphologyLayout.circular.assign(graph);
+            break;
+        case 'force':
+            const { default: forceAtlas2 } = await import('graphology-layout-forceatlas2');
+            forceAtlas2.assign(graph, { ... });
+            break;
+        // Other layouts...
+    }
+};
+```
+
+#### 3. Interactive Features
+- Node hover effects
+- Connected nodes highlighting
+- Edge visibility control
+```typescript
+sigma.on('enterNode', ({ node }) => {
+    const connectedNodeIds = new Set([node, ...graph.neighbors(node)]);
+    // Update node and edge styling
+});
+```
+
+#### 4. Filtering System
+```typescript
+const handleFilterChange = (type: NodeType) => {
+    viewModel.toggleNodeTypeFilter(type);
+    const newSelectedTypes = new Set(selectedTypes);
+    // Update filter state and reinitialize graph
+};
+```
 
 ## Project Structure
 
 ```
 src/
-├── components/          # View layer components
+├── components/
+│   ├── flow/              # React Flow components
+│   │   ├── CustomNode.tsx
+│   │   ├── FilterPanel.tsx
+│   │   └── NodeDetailsPanel.tsx
+│   ├── ReactFlowVisualization.tsx
 │   └── GraphVisualization.tsx
-├── models/             # Data models
-│   └── GraphModel.ts
-├── viewModels/         # View models for state management
-│   └── GraphViewModel.ts
-├── types/              # TypeScript type definitions
-│   ├── Graph.ts        # Core data types
-│   └── GraphUI.ts      # UI-specific types
-├── data/              # Sample data and constants
-│   └── graphData.ts
-└── app/               # Next.js app router
-    └── page.tsx
+├── types/
+│   ├── Graph.ts          # Common graph type definitions
+│   ├── GraphUI.ts        # UI-related types
+│   └── ReactFlowTypes.ts # React Flow specific types
+├── utils/
+│   └── flowLayout.ts     # Layout utilities
+├── viewModels/
+│   └── GraphViewModel.ts # Shared view model
+└── models/
+    └── GraphModel.ts     # Core graph model
 ```
 
-## Features
+## Getting Started
 
-- Interactive graph visualization using Sigma.js
-- Multiple layout options (circular, force, random, circlepack)
-- Node filtering by type
-- Node hover effects with connected nodes highlight
-- Detailed node information sidebar
-- Type-safe implementation with TypeScript
-
-## Setup and Installation
-
-1. Clone the repository
-```bash
-git clone <repository-url>
-cd workflow-builder
-```
-
-2. Install dependencies
+1. Install dependencies:
 ```bash
 npm install
 ```
 
-3. Run the development server
+2. Run the development server:
 ```bash
 npm run dev
 ```
 
-## Key Components
+3. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### GraphModel
-- Handles core graph data structure
-- Provides methods for data access and manipulation
-- Pure business logic without UI concerns
+## Technical Comparison
 
-### GraphViewModel
-- Manages application state
-- Handles user interactions
-- Provides data transformation for the view
-- Maintains filter states and selections
+### React Flow Advantages
+- Easier integration with React applications
+- Built-in features like minimap and controls
+- More straightforward customization through React components
+- Better TypeScript support
 
-### GraphVisualization
-- Renders the graph using Sigma.js
-- Handles user interactions (hover, click, filter)
-- Updates view based on ViewModel state
-- Manages layout and visual properties
-
-## Type System
-
-### Core Types (`Graph.ts`)
-- `Node`: Graph node structure
-- `Edge`: Graph edge structure
-- `NodeType`: Available node types
-- `GraphData`: Complete graph data structure
-
-### UI Types (`GraphUI.ts`)
-- `NodeAttributes`: Sigma.js node rendering attributes
-- `LayoutType`: Available layout options
-- `GraphVisualizationProps`: Component props
-- `NODE_COLORS`: UI color constants
-
-## Usage
-
-```typescript
-// Example usage in a Next.js page
-import GraphVisualization from '../components/GraphVisualization';
-import { graphData } from '../data/graphData';
-
-export default function Page() {
-  return <GraphVisualization data={graphData} />;
-}
-```
+### Sigma.js Advantages
+- Better performance with large graphs
+- More layout options out of the box
+- Advanced graph-specific features
+- Lower-level control over rendering
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details
+Feel free to submit issues and enhancement requests!
