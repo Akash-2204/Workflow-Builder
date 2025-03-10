@@ -28,7 +28,12 @@ const ReactFlowVisualization: React.FC<{ data: GraphData }> = ({ data }) => {
     const { viewModel, forceUpdate } = useGraphViewModel(data);
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-    const [selectedTypes] = useState<Set<NodeType>>(new Set());
+    const [selectedTypes, setSelectedTypes] = useState<Set<NodeType>>(new Set());
+
+    // Sync selectedTypes with viewModel's filteredTypes
+    useEffect(() => {
+        setSelectedTypes(viewModel.getSelectedTypes());
+    }, [viewModel]);
 
     // Convert graph data to React Flow format and apply layout
     const layoutElements = useMemo(() => {
@@ -122,7 +127,10 @@ const ReactFlowVisualization: React.FC<{ data: GraphData }> = ({ data }) => {
         );
     }, [viewModel, setNodes, setEdges]);
 
-    const handleFilterChange = useCallback(() => {
+    const handleFilterChange = useCallback((type: NodeType) => {
+        viewModel.toggleNodeTypeFilter(type);
+        setSelectedTypes(viewModel.getSelectedTypes());
+        
         const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
             viewModel.getVisibleNodes().map((node) => ({
                 id: node.id,

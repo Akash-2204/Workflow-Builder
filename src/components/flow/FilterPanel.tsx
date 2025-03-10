@@ -6,7 +6,7 @@ import { GraphViewModel } from '../../viewModels/GraphViewModel';
 interface FilterPanelProps {
     viewModel: GraphViewModel;
     selectedTypes: Set<NodeType>;
-    onFilterChange: () => void;
+    onFilterChange: (type: NodeType) => void;
 }
 
 const FilterPanel: React.FC<FilterPanelProps> = ({ viewModel, selectedTypes, onFilterChange }) => {
@@ -25,8 +25,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ viewModel, selectedTypes, onF
                             type="checkbox"
                             checked={selectedTypes.has(type)}
                             onChange={() => {
-                                viewModel.toggleNodeTypeFilter(type);
-                                onFilterChange();
+                                onFilterChange(type);
                             }}
                             className="form-checkbox h-4 w-4 text-blue-600"
                         />
@@ -37,7 +36,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ viewModel, selectedTypes, onF
             <button
                 onClick={() => {
                     viewModel.clearFilters();
-                    onFilterChange();
+                    onFilterChange(nodeTypes[0]); // Trigger a re-render with any type
                 }}
                 className="mt-4 w-full px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-sm font-medium transition-colors"
             >
