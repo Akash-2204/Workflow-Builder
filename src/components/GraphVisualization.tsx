@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type Graph from 'graphology';
 import type Sigma from 'sigma';
 import { useGraphViewModel } from '../viewModels/GraphViewModel';
 import { graphData as defaultGraphData } from '../data/graphData';
-import type { Node, Edge, NodeType, GraphData } from '../types/Graph';
+import type { NodeType } from '../types/Graph';
 import { NodeAttributes, GraphVisualizationProps, LayoutType, NODE_COLORS } from '../types/GraphUI';
 
 const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultGraphData }) => {
@@ -184,12 +184,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultG
         sigmaRef.current = sigma;
     };
 
+    const initializeGraphCallback = useCallback(async () => {
+        await initializeGraph();
+    }, [data, selectedLayout, viewModel]);
+
     // Initialize graph on mount and when filters or layout changes
     useEffect(() => {
-        const init = async () => {
-            await initializeGraph();
-        };
-        init();
+        initializeGraphCallback();
 
         return () => {
             if (sigmaRef.current) {
@@ -201,7 +202,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultG
                 graphRef.current = null;
             }
         };
-    }, [data, selectedLayout]); // Only reinitialize when data or layout changes
+    }, [data, selectedLayout, initializeGraphCallback]);
 
     const handleFilterChange = (type: NodeType) => {
         viewModel.toggleNodeTypeFilter(type);
