@@ -3,38 +3,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type Graph from 'graphology';
 import type Sigma from 'sigma';
-import type { Attributes } from 'graphology-types';
 import { useGraphViewModel } from '../viewModels/GraphViewModel';
 import { graphData as defaultGraphData } from '../data/graphData';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { Node, Edge, NodeType, GraphData } from '../types/Graph';
-
-type LayoutType = 'circular' | 'force' | 'random' | 'circlepack';
-
-interface NodeAttributes extends Attributes {
-    label: string;
-    size: number;
-    color: string;
-    type: NodeType;
-    hidden: boolean;
-    x: number;
-    y: number;
-}
-
-// Define node colors based on type
-const NODE_COLORS: Record<NodeType, string> = {
-    Person: '#4CAF50',
-    Company: '#2196F3',
-    Technology: '#FF9800',
-    Project: '#9C27B0',
-    Community: '#F44336',
-    Event: '#795548',
-    Investor: '#607D8B'
-};
-
-interface GraphVisualizationProps {
-    data?: GraphData;
-}
+import { NodeAttributes, GraphVisualizationProps, LayoutType, NODE_COLORS } from '../types/GraphUI';
 
 const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultGraphData }) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -97,12 +69,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultG
         graphRef.current = graph;
 
         // Add nodes to the graph
-        const nodes = viewModel.getVisibleNodes();
-        nodes.forEach(node => {
+        const visibleNodes = viewModel.getVisibleNodes();
+        visibleNodes.forEach(node => {
             graph.addNode(node.id, {
                 label: node.label,
                 size: 15,
                 color: NODE_COLORS[node.type],
+                nodeType: node.type,
                 x: Math.random() * 100,
                 y: Math.random() * 100,
                 labelSize: 14,
@@ -140,7 +113,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultG
             },
             labelDensity: 0.7,
             labelGridCellSize: 60,
-            labelRenderedSizeThreshold: 6
+            labelRenderedSizeThreshold: 6,
+            defaultNodeType: 'circle',
+            defaultEdgeType: 'line'
         });
 
         // Handle interactions
@@ -155,18 +130,24 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultG
                 const isConnected = connectedNodeIds.has(nodeId);
                 
                 if (isConnected) {
-                    nodeAttrs.size = nodeId === node ? 20 : 15;
-                    nodeAttrs.color = nodeId === node ? '#ff0000' : NODE_COLORS[nodeAttrs.type];
-                    nodeAttrs.labelSize = nodeId === node ? 16 : 14;
+                    nodeAttrs.size = nodeId === node ? 20 : 18;
+                    nodeAttrs.color = nodeId === node ? '#ff0000' : '#ff9900'; // Main node red, connected nodes orange
+                    nodeAttrs.labelSize = nodeId === node ? 16 : 15;
                     nodeAttrs.hidden = false;
                 } else {
                     nodeAttrs.hidden = true;
                 }
             });
 
-            // Update edges
+            // Update edges - make connected edges more visible
             graph.forEachEdge((edgeId, attrs, source, target) => {
-                attrs.hidden = !(connectedNodeIds.has(source) && connectedNodeIds.has(target));
+                if (connectedNodeIds.has(source) && connectedNodeIds.has(target)) {
+                    attrs.hidden = false;
+                    attrs.color = '#ff9900';
+                    attrs.size = 2;
+                } else {
+                    attrs.hidden = true;
+                }
             });
 
             sigma.refresh();
@@ -180,14 +161,16 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultG
             graph.forEachNode((nodeId, attrs) => {
                 const nodeAttrs = attrs as NodeAttributes;
                 nodeAttrs.size = 15;
-                nodeAttrs.color = NODE_COLORS[nodeAttrs.type];
+                nodeAttrs.color = NODE_COLORS[nodeAttrs.nodeType];
                 nodeAttrs.labelSize = 14;
                 nodeAttrs.hidden = false;
             });
 
-            // Restore all edges
+            // Restore all edges to initial state
             graph.forEachEdge((edgeId, attrs) => {
                 attrs.hidden = false;
+                attrs.color = '#999';  // Reset to initial color
+                attrs.size = 1;  // Reset to initial size
             });
 
             sigma.refresh();
@@ -201,9 +184,12 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultG
         sigmaRef.current = sigma;
     };
 
-    // Initialize graph on mount
+    // Initialize graph on mount and when filters or layout changes
     useEffect(() => {
-        initializeGraph();
+        const init = async () => {
+            await initializeGraph();
+        };
+        init();
 
         return () => {
             if (sigmaRef.current) {
@@ -215,14 +201,10 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultG
                 graphRef.current = null;
             }
         };
-    }, []);
-
-    // Reinitialize graph when filters or layout changes
-    useEffect(() => {
-        initializeGraph();
-    }, [selectedTypes, selectedLayout, viewModel]);
+    }, [data, selectedLayout]); // Only reinitialize when data or layout changes
 
     const handleFilterChange = (type: NodeType) => {
+        viewModel.toggleNodeTypeFilter(type);
         const newSelectedTypes = new Set(selectedTypes);
         if (newSelectedTypes.has(type)) {
             newSelectedTypes.delete(type);
@@ -230,14 +212,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ data = defaultG
             newSelectedTypes.add(type);
         }
         setSelectedTypes(newSelectedTypes);
-        viewModel.toggleNodeTypeFilter(type);
-        forceUpdate();
+        initializeGraph(); // Reinitialize the graph with filtered nodes
     };
 
     const handleClearFilters = () => {
-        setSelectedTypes(new Set());
         viewModel.clearFilters();
-        forceUpdate();
+        setSelectedTypes(new Set());
+        initializeGraph(); // Reinitialize the graph with all nodes
     };
 
     const handleLayoutChange = (layout: LayoutType) => {
